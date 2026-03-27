@@ -79,7 +79,7 @@ python3 immich_photoframe.py
 | `http://your-server:8765/horizontal` | Random photo from the horizontal album |
 | `http://your-server:8765/vertical` | Random photo from the vertical album |
 
-Paste these directly into the ESP32 photoframe's **Auto Rotate URL** field in its web UI.
+Paste the applicable orientation endpoint directly into the ESP32 photoframe's **Auto Rotate URL** field in its web UI.
 
 ---
 
@@ -113,7 +113,7 @@ python3 -m venv /mnt/APP_POOL/apps/photoframe-venv
 
 2. Download the virtualenv zipapp (replace 3.11 if yours differs)
 ```
-cd /mnt/NVME_APPS/apps
+cd /mnt/APP_POOL/apps
 sudo wget "https://bootstrap.pypa.io/virtualenv/3.11/virtualenv.pyz"
 ```
 

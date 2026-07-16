@@ -144,7 +144,7 @@ x-api-key: <your-key>
 Content-Type: application/json
 
 {
-  "albumIds": ["a73e7c36-2528-4a9f-adff-da800c3908c1"],
+  "albumIds": ["xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"],
   "page": 1,
   "size": 5
 }

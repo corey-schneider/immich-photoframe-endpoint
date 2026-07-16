@@ -1,20 +1,33 @@
 #!/usr/bin/env python3
 
 # ─────────────────────────────────────────────────────────────────────────────
-
-IMMICH_URL          = "http://<YOUR-IMMICH-SERVER>:2283"
-API_KEY             = "YOUR_IMMICH_API_KEY"
-HORIZONTAL_ALBUM_ID = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-VERTICAL_ALBUM_ID   = "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
-PORT                = 8765
-
+# Configuration — set via environment variables (see .env.example / docker-compose.yml)
 # ─────────────────────────────────────────────────────────────────────────────
 
-DATE_FORMAT         = "%b %-d, %y"   # e.g. "July 04, 2021"  →  "%Y-%m-%d" for compact
-OVERLAY_OPACITY     = 40            # 0 (invisible) – 255 (fully opaque)
-TEXT_OPACITY        = 180           # 0 (invisible) – 255 (fully opaque)
-FONT_SIZE_DIVISOR   = 30            # larger = smaller. font size = image width ÷ this value (~40px on 1080p)
-MARGIN_DIVISOR      = 70            # larger = smaller. corner margin = image width ÷ this value
+import os, sys
+
+def _require_env(name):
+    val = os.environ.get(name, "").strip()
+    if not val:
+        print(f"[photoframe] ERROR: required environment variable '{name}' is not set.", file=sys.stderr)
+        sys.exit(1)
+    return val
+
+IMMICH_URL          = _require_env("IMMICH_URL").rstrip("/")
+API_KEY             = _require_env("IMMICH_API_KEY")
+HORIZONTAL_ALBUM_ID = _require_env("HORIZONTAL_ALBUM_ID")
+VERTICAL_ALBUM_ID   = _require_env("VERTICAL_ALBUM_ID")
+PORT                = int(os.environ.get("PORT", "8765"))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Display / overlay tuning (optional overrides)
+# ─────────────────────────────────────────────────────────────────────────────
+
+DATE_FORMAT      = os.environ.get("DATE_FORMAT", "%b %-d, %y")       # e.g. "Jul 4, 26"
+OVERLAY_OPACITY  = int(os.environ.get("OVERLAY_OPACITY",  "40"))     # 0–255
+TEXT_OPACITY     = int(os.environ.get("TEXT_OPACITY",     "180"))    # 0–255
+FONT_SIZE_DIVISOR= int(os.environ.get("FONT_SIZE_DIVISOR","30"))     # larger = smaller font
+MARGIN_DIVISOR   = int(os.environ.get("MARGIN_DIVISOR",   "70"))     # larger = smaller margin
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -62,12 +75,60 @@ def immich_get(path):
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.loads(resp.read())
 
+def immich_post(path, body):
+    """Make an authenticated POST request to the Immich API with a JSON body."""
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        f"{IMMICH_URL}{path}",
+        data=data,
+        headers={
+            "x-api-key": API_KEY,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read())
+
 def get_random_asset(album_id):
-    """Return a random asset dict (includes metadata) from the given album."""
-    data = immich_get(f"/api/albums/{album_id}")
-    assets = data.get("assets", [])
+    """
+    Return a random asset dict from the given album.
+
+    Uses POST /api/search/metadata with albumId filter — required since
+    Immich removed the 'assets' field from GET /api/albums/{id} in a
+    recent update. We also include withExif so date parsing works
+    without a second round-trip.
+    """
+    page = 1
+    page_size = 1000
+
+    data = immich_post("/api/search/metadata", {
+        "albumIds": [album_id],
+        "withExif": True,
+        "page": page,
+        "size": page_size,
+    })
+
+    assets = data.get("assets", {}).get("items", [])
+    total  = data.get("assets", {}).get("total", 0)
+
     if not assets:
         raise ValueError(f"Album {album_id} has no assets")
+
+    # If there are more assets than one page, randomly pick a later page too
+    if total > page_size:
+        total_pages = (total + page_size - 1) // page_size
+        rand_page   = random.randint(1, total_pages)
+        if rand_page != page:
+            data2  = immich_post("/api/search/metadata", {
+                "albumIds": [album_id],
+                "withExif": True,
+                "page": rand_page,
+                "size": page_size,
+            })
+            assets = data2.get("assets", {}).get("items", []) or assets
+
     return random.choice(assets)
 
 def fetch_image_bytes(asset_id):
@@ -115,15 +176,16 @@ def add_date_overlay(image_bytes, date_str, target_size=None):
     font_size = max(12, short_side // FONT_SIZE_DIVISOR)
     margin    = max(8,  short_side // MARGIN_DIVISOR)
 
-    # Try common system font locations (macOS, Debian/Ubuntu, FreeBSD/TrueNAS)
+    # Try common system font locations (macOS, Debian/Ubuntu, FreeBSD/TrueNAS, Docker/Alpine)
     font_candidates = [
-        "/System/Library/Fonts/Helvetica.ttc",                             # macOS
+        "/System/Library/Fonts/Helvetica.ttc",                            # macOS
         "/System/Library/Fonts/Supplemental/Arial.ttf",                   # macOS
         "/Library/Fonts/Arial.ttf",                                       # macOS
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",                # Debian/Ubuntu
         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",# RHEL/CentOS
         "/usr/local/share/fonts/dejavu/DejaVuSans.ttf",                   # FreeBSD/TrueNAS
         "/usr/share/fonts/dejavu/DejaVuSans.ttf",                         # FreeBSD alt
+        "/usr/share/fonts/dejavu-sans/DejaVuSans.ttf",                    # Alpine Linux (Docker)
     ]
     font = None
     for path in font_candidates:

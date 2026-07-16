@@ -2,7 +2,7 @@
 
 A tiny Python server that bridges [Immich](https://immich.app/) with an [ESP32 photoframe](https://github.com/aitjcize/esp32-photoframe) (or any device that fetches images from a URL). It picks a random photo from a specified album and serves it as a JPEG, with an optional subtle date overlay in the bottom corner.
 
-_Tested and working with Immich v2.6.2 (Mar 25 2026)_
+_Tested and working with Immich v3.0.2+_
 
 ---
 
@@ -99,7 +99,62 @@ The date is sourced from EXIF (`dateTimeOriginal`) when available, falling back 
 
 ---
 
-### TrueNAS Community Edition
+## Docker (recommended for TrueNAS SCALE / any container host)
+
+A `Dockerfile` and `docker-compose.yml` are included.
+
+### Build & run with Docker Compose
+
+```bash
+docker compose up -d --build
+```
+
+The container listens on port **8765** and restarts automatically unless stopped.
+
+### Or build & run manually
+
+```bash
+docker build -t immich-photoframe .
+docker run -d --name immich-photoframe --restart unless-stopped -p 8765:8765 immich-photoframe
+```
+
+### TrueNAS SCALE
+
+1. Push the image to a registry (Docker Hub, GHCR, or your local one), **or** copy the `Dockerfile` + `immich_photoframe.py` to a dataset and build there.
+2. In TrueNAS SCALE, add the container via **Apps → Custom App** (or Docker Compose via the shell), mapping host port 8765 → container port 8765.
+3. Set **Restart Policy** to `Unless Stopped`.
+
+---
+
+## Testing with Postman
+
+Point Postman at your running server to verify each endpoint without rebooting drives:
+
+| Method | URL | Expected response |
+|--------|-----|-------------------|
+| `GET` | `http://<server>:8765/horizontal` | `200 image/jpeg` — a random cropped photo |
+| `GET` | `http://<server>:8765/vertical` | `200 image/jpeg` — a random cropped photo |
+| `GET` | `http://<server>:8765/anything` | `404` — "Not found. Try /horizontal or /vertical" |
+
+**To test the Immich API directly** (bypasses the Python layer entirely):
+
+```
+POST http://192.168.1.200:2283/api/search/metadata
+x-api-key: <your-key>
+Content-Type: application/json
+
+{
+  "albumIds": ["a73e7c36-2528-4a9f-adff-da800c3908c1"],
+  "page": 1,
+  "size": 5
+}
+```
+
+You should get a JSON response with `assets.total > 0` and a populated `assets.items` array. If that works but `/horizontal` still returns an error, the issue is in the Python layer (check logs).
+
+---
+
+### TrueNAS Community Edition (bare-metal / venv)
 
 Put the script and venv on a **dataset** (not the boot pool - it gets wiped on updates):
 

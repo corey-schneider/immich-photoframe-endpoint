@@ -1,0 +1,21 @@
+services:
+  photoframe:
+    build:
+      context: https://github.com/corey-schneider/immich-photoframe-endpoint.git
+    container_name: immich-photoframe
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      IMMICH_URL:           http://192.168.1.200:2283
+      IMMICH_API_KEY:       YOUR_API_KEY_HERE
+      HORIZONTAL_ALBUM_ID:  YOUR_HORIZONTAL_ALBUM_UUID
+      VERTICAL_ALBUM_ID:    YOUR_VERTICAL_ALBUM_UUID
+
+      # ── Optional (uncomment to override defaults)
+      # PORT:               8765
+      # DATE_FORMAT:        "%b %-d, %y"
+      # OVERLAY_OPACITY:    40
+      # TEXT_OPACITY:       180
+      # FONT_SIZE_DIVISOR:  30
+      # MARGIN_DIVISOR:     70
